@@ -1,0 +1,39 @@
+[Unit]
+Description=Rental Listings Scheduler
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=rental
+Group=rental
+WorkingDirectory=/opt/rental-updates
+ExecStart=/usr/bin/python3 /opt/rental-updates/rental_scheduler.py
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart on failure
+Restart=always
+RestartSec=10
+
+# Environment
+Environment=PYTHONPATH=/opt/rental-updates/src
+Environment=PYTHONUNBUFFERED=1
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/rental-updates/data /opt/rental-updates/logs
+ProtectHome=yes
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rental-scheduler
+
+# Resource limits
+LimitNOFILE=65536
+MemoryLimit=512M
+
+[Install]
+WantedBy=multi-user.target
