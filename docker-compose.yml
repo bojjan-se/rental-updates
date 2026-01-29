@@ -3,24 +3,8 @@ services:
     build: .
     container_name: rental-scraper
     restart: unless-stopped
-
-    # Mount volumes for data persistence
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./config.yaml:/app/config.yaml:ro
-
-    # Environment variables
-    environment:
-      - PYTHONPATH=/app/src
-      - PYTHONUNBUFFERED=1
-
-    # Logging configuration
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-
-    # Command to run
-    command: ["python3", "rental_scheduler.py"]
+    command: ["python3", "run.py"]

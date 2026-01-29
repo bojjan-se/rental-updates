@@ -1,12 +1,9 @@
-"""
-Rental Listings Scraper Package
-"""
+"""Rental Listings Scraper"""
 
 from .models import RentalListing
-from .scraper import WahlinRentalScraper
-from .change_detector import ChangeDetector
-from .email_notifications import EmailNotifier
+from .scraper import BaseScraper, WahlinRentalScraper, WallfastRentalScraper
+from .detector import ChangeDetector
+from .email import EmailNotifier
 from .database import RentalDatabase
 
-__version__ = "0.1.0"
-__all__ = ['RentalListing', 'WahlinRentalScraper', 'ChangeDetector', 'EmailNotifier', 'RentalDatabase']
+__version__ = "1.0.0"

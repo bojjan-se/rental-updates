@@ -1,46 +1,22 @@
-# Rental Listings Scraper Configuration
-# Copy this file to config.yaml and fill in your credentials
+# Rental Listings Scraper
+# Copy to config.yaml and fill in credentials
 
-# Scheduling settings (Central European Time)
-scheduling:
-  enabled: true
-  timezone: "Europe/Stockholm"  # CET/CEST
-  start_time: "08:00"           # 8 AM
-  end_time: "22:00"             # 10 PM
-  interval_minutes: 15          # Check every 15 minutes
-  weekdays_only: true           # Only run Monday-Friday
+schedule:
+  timezone: "Europe/Stockholm"
+  start: "08:00"
+  end: "22:00"
+  interval_minutes: 5
+  weekdays_only: true
 
-# Email notification settings
 email:
   enabled: true
-  smtp_server: "smtp.gmail.com"
-  smtp_port: 587
-  sender_email: "your-email@gmail.com"        # Your Gmail address
-  sender_password: "xxxx xxxx xxxx xxxx"      # Gmail App Password (NOT your regular password)
-  recipient_email: "recipient@example.com"    # Where to send notifications
-  subject_template: "New Rental Listings Found - {count} new apartments"
+  sender: "your-email@gmail.com"
+  password: "your-gmail-app-password"
+  recipient: "recipient@example.com"
 
-# Scraping settings
-scraping:
-  delay_seconds: 1.0
-  timeout_seconds: 30
-  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+scrapers:
+  wahlin: true
+  wallfast: true
 
-# Data storage
-storage:
-  database_file: "data/rentals.db"
-  output_directory: "output"
-  data_directory: "data"
-  log_file: "scheduler.log"
-  cleanup_days: 14  # Remove listings older than 14 days
-
-# Website settings
-websites:
-  wahlin:
-    base_url: "https://wahlinfastigheter.se"
-    listings_url: "https://wahlinfastigheter.se/hyr-av-oss/objekt/lagenhet/"
-    enabled: true
-  wallfast:
-    base_url: "https://wallfast.com"
-    listings_url: "https://wallfast.com/lediga-objekt"
-    enabled: true
+database: "data/rentals.db"
+cleanup_days: 14
