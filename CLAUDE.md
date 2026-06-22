@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Rental listings scraper for Swedish rental websites. Sends email notifications for new apartments. Runs 8-22 CET, Mon-Fri.
+Rental listings scraper for Swedish rental websites. Sends email notifications for new apartments. Runs 24/7, every day (CET).
 
 ## Commands
 
