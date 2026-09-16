@@ -29,7 +29,8 @@ def setup_logging(log_dir: str = "logs", log_file: str = "scheduler.log") -> Non
     file_handler = logging.handlers.RotatingFileHandler(
         log_path,
         maxBytes=10 * 1024 * 1024,
-        backupCount=5
+        backupCount=5,
+        encoding='utf-8'
     )
     file_handler.setFormatter(formatter)
 

@@ -1,36 +1,101 @@
-# Rental Listings Scraper
+# Rental Listings Monitor
 
-Monitors Swedish rental websites and sends email notifications for new apartments.
+Watches Swedish rental landlords for new apartments and pushes a notification
+within seconds. Built for listings that are sometimes visible for only a few
+minutes.
+
+## How it works
+
+Neither landlord offers a feed, webhook or any other push channel, so the
+monitor polls. What makes it fast enough is *what* it polls and *how*:
+
+| Source | What is polled | Default interval |
+|---|---|---|
+| `wahlin_arena` | Wåhlin's tenant portal JSON (Vitec Arena). The public website is synced from this once a day, so short-lived listings appear here first, and possibly only here. | 20 s |
+| `wallfast` | Wallfast's listings page. Web-let apartments are posted weekdays 11:00-14:00 and can be taken down within minutes. | 20 s |
+| `wahlin` | Wåhlin's public website. Fallback only; anything already reported via the portal is suppressed. | 5 min |
+
+- Each source runs on its own thread, so a slow site never delays another.
+- New listings are handed to a notifier queue immediately; sending happens on
+  a separate thread so SMTP latency never blocks polling.
+- A failed or unrecognised fetch is never mistaken for "no listings". Pollers
+  back off on 429/5xx and alert you if a site keeps failing or changes shape.
+- First-seen / last-seen times are stored per listing, and the daily summary
+  reports how long each listing was actually visible.
+
+Both landlords allocate web-advertised apartments by lottery, so the aim is
+to get you into the draw before the ad closes, not to be first.
 
 ## Setup
 
 ```bash
-git clone https://github.com/yourusername/rental-updates.git
+git clone https://github.com/bojjan-se/rental-updates.git
 cd rental-updates
 pip install -r requirements.txt
 cp config.example.yaml config.yaml
-# Edit config.yaml with your credentials
+# Edit config.yaml
 python3 run.py
 ```
 
-## Configuration
+## Notifications
 
-Edit `config.yaml`:
+Configure any combination under `notifications:` in `config.yaml`:
 
-```yaml
-email:
-  sender_email: "your-email@gmail.com"
-  sender_password: "your-gmail-app-password"
-  recipient_email: "recipient@example.com"
+- **email** – Gmail SMTP with an [App Password](https://support.google.com/accounts/answer/185833).
+- **ntfy** – phone push with no account: install the [ntfy](https://ntfy.sh) app,
+  subscribe to a secret topic name, set `topic`. Delivers in about a second.
+- **telegram** – create a bot with @BotFather, set `bot_token` and `chat_id`.
+
+Email alone is usually too slow to notice for a 3-minute window; enable ntfy
+or Telegram as well.
+
+Check delivery before waiting for a real listing:
+
+```bash
+python3 run.py --test-notify
 ```
 
-Use a [Gmail App Password](https://support.google.com/accounts/answer/185833).
+## Never falling silent
+
+Being blocked, or the process dying, must never look like "no listings".
+Every one of these produces a phone alert:
+
+| Situation | What happens |
+|---|---|
+| HTTP 401/403/429 from a site | Alert on the **first** response. Backs off, keeps retrying, alerts again hourly while it lasts, sends an all-clear on recovery. |
+| Login wall, bot challenge, redesign | The scraper no longer recognises the response: immediate "structure changed" alert. |
+| Network errors, timeouts | Alert after 5 in a row, or after 3 minutes without a successful poll, whichever comes first. |
+| A poller thread dies | The supervisor restarts it and alerts. |
+| The whole process or server dies | Only an outside observer can catch this: set `health.heartbeat_url` to a free [healthchecks.io](https://healthchecks.io) check (period 1 min, grace 5 min) with its ntfy integration pointed at your topic. The monitor pings it every minute while healthy and pings `/fail` while a source is down. |
 
 ## Docker
 
 ```bash
-docker-compose up -d
-docker-compose logs -f rental-scraper
+docker compose up -d
+docker compose logs -f rental-scraper
+```
+
+## Automatic deploys on the server
+
+`deploy/auto-update.sh` checks `origin/main` once a minute. When it has
+moved, the script pulls, builds the image, runs the test suite inside the new
+image, and only then swaps the running container. A commit that fails to
+build or test is reported to your ntfy topic and skipped; the old container
+keeps running. Successful deploys are announced too.
+
+One-time setup on the server, inside the cloned repo:
+
+```bash
+bash deploy/install-autoupdate.sh
+```
+
+After that, `git push` is the whole release process. Progress is logged to
+`logs/autoupdate.log`.
+
+## Tests
+
+```bash
+python -m pytest
 ```
 
 ## Structure
@@ -38,14 +103,25 @@ docker-compose logs -f rental-scraper
 ```
 run.py              # Entry point
 src/
-├── scheduler.py    # Main loop
-├── scraper.py      # Web scrapers
-├── detector.py     # New listing detection
-├── database.py     # SQLite
-├── email.py        # Notifications
-├── models.py       # Data models
-└── logging.py      # Logging
+├── scheduler.py    # One poller thread per source, backoff, alerts, daily summary
+├── scraper.py      # Scrapers: WahlinArenaScraper (JSON), WahlinRentalScraper, WallfastRentalScraper
+├── detector.py     # New-listing detection and cross-source de-duplication
+├── database.py     # SQLite (auto-migrates v1 databases)
+├── notify.py       # Notification queue + ntfy / Telegram channels
+├── email.py        # Email channel and HTML formatting
+├── models.py       # RentalListing
+└── logging.py      # Logging setup
+tests/              # pytest suite (offline; uses fixtures)
 ```
+
+## Adding a source
+
+1. Subclass `BaseScraper` in `src/scraper.py`; implement `url()` and `_parse()`.
+   Raise `ShapeChanged` when the response is not what you expect, so the
+   scheduler alerts instead of silently reporting "no listings".
+2. Give each listing a stable `key` (defaults to the URL) and, if the landlord
+   exposes it, an `object_id` so duplicates across sources are merged.
+3. Register it in `SCRAPERS` and add it under `sources:` in the config.
 
 ## License
 

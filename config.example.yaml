@@ -1,22 +1,69 @@
-# Rental Listings Scraper
-# Copy to config.yaml and fill in credentials
+# Rental Listings Monitor
+# Copy to config.yaml and fill in credentials.
+#
+# Listings are sometimes visible for only 3-5 minutes, so each source is
+# polled on its own thread at a short interval, around the clock. The old
+# v1 layout (schedule/email/scrapers) is still accepted.
 
-schedule:
-  timezone: "Europe/Stockholm"
-  start: "00:00"
-  end: "23:59"
-  interval_minutes: 5
-  weekdays_only: false
+timezone: "Europe/Stockholm"
+summary_time: "23:59"        # daily summary + database cleanup
 
-email:
-  enabled: true
-  sender: "your-email@gmail.com"
-  password: "your-gmail-app-password"
-  recipient: "recipient@example.com"
+sources:
+  # Wåhlin's tenant portal (Vitec Arena). System of record; the public
+  # website is synced from it once a day at ~08:08, so short-lived listings
+  # may only ever appear here. Unauthenticated JSON, ~40 KB per poll.
+  wahlin_arena:
+    enabled: true
+    interval_seconds: 20
 
-scrapers:
-  wahlin: true
-  wallfast: true
+  # Wåhlin's public website. Daily mirror of the above; kept as a fallback.
+  # Listings already reported via wahlin_arena are not reported again.
+  wahlin:
+    enabled: true
+    interval_seconds: 300
+
+  # Wallfast. Apartments let via the web are posted weekdays 11:00-14:00 and
+  # allocated by lottery; ads can be taken down within minutes.
+  wallfast:
+    enabled: true
+    interval_seconds: 20
+
+notifications:
+  # Gmail SMTP - use an App Password: https://support.google.com/accounts/answer/185833
+  email:
+    enabled: true
+    sender: "your-email@gmail.com"
+    password: "your-gmail-app-password"
+    recipient: "recipient@example.com"
+
+  # Phone push via ntfy (https://ntfy.sh). Install the app, subscribe to a
+  # topic name of your choosing (treat it like a password), and put it here.
+  ntfy:
+    enabled: false
+    server: "https://ntfy.sh"
+    topic: ""
+    token: ""              # only for self-hosted/protected topics
+    priority: "high"
+
+  # Telegram bot: create one with @BotFather, message it once, then find your
+  # chat id via https://api.telegram.org/bot<token>/getUpdates
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+
+# Never fall silent: every failure mode below produces a phone alert.
+health:
+  block_status_codes: [401, 403, 429]    # alert on the FIRST response with one of these (looks like a ban)
+  alert_after_consecutive_failures: 5    # other failures (network, parse): alert after this many in a row
+  stale_after_seconds: 180               # alert when a source has had no successful poll for this long
+  max_backoff_seconds: 300               # cap for backoff after failures
+  alert_cooldown_seconds: 3600           # while still down, repeat the alert at most this often
+  # Optional dead man's switch. Create a free check at https://healthchecks.io
+  # (period 1 min, grace 5 min) and connect its ntfy integration to your topic.
+  # The monitor pings it every minute while healthy and pings /fail when a
+  # source is down, so you are alerted even if this process or server dies.
+  heartbeat_url: ""
 
 database: "data/rentals.db"
-cleanup_days: 14
+cleanup_days: 14              # forget listings not seen for this many days

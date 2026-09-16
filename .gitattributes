@@ -1,0 +1,4 @@
+# Shell scripts run on Linux servers; keep LF regardless of the committing OS.
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf

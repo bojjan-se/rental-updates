@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any
 from datetime import datetime
 
+
 @dataclass
 class RentalListing:
     """Data model for a rental listing"""
@@ -12,11 +13,18 @@ class RentalListing:
     size: str  # e.g., "87 kvm"
     url: Optional[str] = None
     scraped_at: Optional[datetime] = None
-    source: Optional[str] = None  # Track which website this listing came from
+    source: Optional[str] = None  # Which scraper produced this listing
+    key: Optional[str] = None  # Stable identity used for de-duplication (defaults to url)
+    object_id: Optional[str] = None  # Landlord's own object number, when known (e.g. "502-204")
+    published_until: Optional[str] = None  # Application deadline as shown by the landlord
+    lottery: Optional[bool] = None  # True if the landlord allocates this listing by lottery
+    move_in: Optional[str] = None  # Earliest move-in date, when known
 
     def __post_init__(self):
         if self.scraped_at is None:
             self.scraped_at = datetime.now()
+        if self.key is None:
+            self.key = self.url
 
     @property
     def rent_amount(self) -> Optional[int]:
@@ -52,11 +60,16 @@ class RentalListing:
         """Convert to dictionary for JSON serialization"""
         return {
             'source': self.source,
+            'key': self.key,
+            'object_id': self.object_id,
             'area': self.area,
             'street': self.street,
             'number_of_rooms': self.number_of_rooms,
             'rent_cost': self.rent_cost,
             'size': self.size,
             'url': self.url,
+            'published_until': self.published_until,
+            'lottery': self.lottery,
+            'move_in': self.move_in,
             'scraped_at': self.scraped_at.isoformat() if self.scraped_at else None
         }
