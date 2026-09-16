@@ -36,6 +36,7 @@ DEFAULT_INTERVALS = {
     'wahlin_arena': 20,   # system of record for Wåhlin; short-lived listings appear here
     'wallfast': 20,       # ads published weekdays 11-14, can vanish within minutes
     'wahlin': 300,        # daily mirror of Arena; fallback only
+    'heimstaden': 3600,   # 2.5 MB nationwide response; allocation by registration date, so hourly is enough
 }
 
 DEFAULT_HEALTH = {
@@ -88,6 +89,7 @@ def normalize_config(raw: dict) -> dict:
                 'interval_seconds': int((s or {}).get('interval_seconds',
                                                       DEFAULT_INTERVALS.get(name, default_interval))),
                 'exclude_areas': [str(a) for a in ((s or {}).get('exclude_areas') or [])],
+                'include_areas': [str(a) for a in ((s or {}).get('include_areas') or [])],
             }
     elif isinstance(cfg.get('scrapers'), dict):
         # v1 layout: scrapers: {wahlin: true, wallfast: true}
@@ -204,6 +206,8 @@ class SourcePoller(threading.Thread):
         self.health = config['health']
         self.exclude_areas = (config.get('filters', {}).get('exclude_areas', [])
                               + config['sources'].get(name, {}).get('exclude_areas', []))
+        # include_areas: only listings in these areas are even considered (not stored, not notified).
+        self.include_areas = config['sources'].get(name, {}).get('include_areas', [])
         self.consecutive_failures = 0
         self.backoff = 0.0
         self.down = False                    # an alert has been raised and not yet cleared
@@ -214,6 +218,7 @@ class SourcePoller(threading.Thread):
 
     def run(self):
         logger.info(f"[{self.source}] polling every {self.interval}s"
+                    + (f", only areas: {', '.join(self.include_areas)}" if self.include_areas else "")
                     + (f", not notifying for areas: {', '.join(self.exclude_areas)}" if self.exclude_areas else ""))
         while not stop_event.is_set():
             started = self.clock()
@@ -231,15 +236,24 @@ class SourcePoller(threading.Thread):
             logger.exception(f"[{self.source}] unexpected error in poll")
             self._on_failure(ScrapeResult(self.source, ok=False, error=f"internal error: {e}"))
 
+    @staticmethod
+    def _area_matches(area: str, names) -> bool:
+        return any(re.search(rf'(?<!\w){re.escape(x)}(?!\w)', area or '', re.IGNORECASE) for x in names)
+
     def is_excluded(self, listing) -> bool:
-        area = (listing.area or '')
-        return any(re.search(rf'(?<!\w){re.escape(x)}(?!\w)', area, re.IGNORECASE) for x in self.exclude_areas)
+        return self._area_matches(listing.area, self.exclude_areas)
+
+    def is_included(self, listing) -> bool:
+        return not self.include_areas or self._area_matches(listing.area, self.include_areas)
 
     def poll_once(self):
         result = self.scraper.fetch()
         new = []
         if result.ok:
-            new = self.detector.detect_new_listings(result.listings)
+            listings = [l for l in result.listings if self.is_included(l)]
+            if self.include_areas:
+                logger.debug(f"[{self.source}] {len(listings)} of {len(result.listings)} listings in wanted areas")
+            new = self.detector.detect_new_listings(listings)
             if new:
                 wanted = []
                 for l in new:

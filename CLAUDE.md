@@ -36,6 +36,7 @@ tests/              # pytest; no network access needed
 - `wahlin_arena`: `GET https://minasidor.wahlinfastigheter.se/rentalobject/Listapartment/published?sortOrder=&timestamp=<ms>` returns a JSON list (sometimes wrapped as `{"data": "<json>"}`), no auth. Listing key is `wahlin:<Id>:<ShowDateStart date>` so a re-publication is reported again.
 - `wahlin`: WordPress page synced from Arena daily at ~08:08; object id is parsed from the URL slug for de-duplication against Arena.
 - `wallfast`: SiteVision page; `li.sv-channel-item` entries. Ads posted weekdays 11:00-14:00.
+- `heimstaden`: same Arena endpoint shape at `https://mitt.heimstaden.com` (subclass of the Wåhlin scraper; key prefix `heimstaden:`). ~2.5 MB, all of Sweden, no server-side filter, no gzip/ETag; poll hourly and filter with `include_areas` (area names like "Stockholm - Vasastaden", city prefix stripped). The public site heimstaden.com is a mirror imported ~3-4 times a day. Allocation by registration date on Mina sidor.
 - Both landlords allocate web-advertised apartments by lottery with a deadline; the notification includes the deadline when known.
 
 ## Operations

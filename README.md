@@ -14,6 +14,7 @@ monitor polls. What makes it fast enough is *what* it polls and *how*:
 | `wahlin_arena` | Wåhlin's tenant portal JSON (Vitec Arena). The public website is synced from this once a day, so short-lived listings appear here first, and possibly only here. | 20 s |
 | `wallfast` | Wallfast's listings page. Web-let apartments are posted weekdays 11:00-14:00 and can be taken down within minutes. | 20 s |
 | `wahlin` | Wåhlin's public website. Fallback only; anything already reported via the portal is suppressed. | 5 min |
+| `heimstaden` | Heimstaden's tenant portal JSON (same Vitec Arena product). One 2.5 MB response for all of Sweden, filtered by `include_areas`. Allocation is by registration date, so hourly is enough. | 1 h |
 
 - Each source runs on its own thread, so a slow site never delays another.
 - New listings are handed to a notifier queue immediately; sending happens on

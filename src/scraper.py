@@ -120,6 +120,8 @@ class WahlinArenaScraper(BaseScraper):
     BASE_URL = "https://minasidor.wahlinfastigheter.se"
     LIST_PATH = "/rentalobject/Listapartment/published"
     REQUIRED_FIELDS = ("Id", "Adress1", "DetailsUrl")
+    KEY_PREFIX = "wahlin"
+    AREA_STRIP_PREFIX = ""  # e.g. "Stockholm - " when the landlord prefixes areas with the city
 
     def __init__(self, timeout: float = 15.0):
         super().__init__(timeout)
@@ -174,7 +176,9 @@ class WahlinArenaScraper(BaseScraper):
         size_str = f"{size:g} kvm" if isinstance(size, (int, float)) else "N/A"
 
         area = obj.get('AreaName') or (obj.get('Adress3') or 'Unknown').title()
-        street = obj['Adress1']
+        if cls.AREA_STRIP_PREFIX and area.startswith(cls.AREA_STRIP_PREFIX):
+            area = area[len(cls.AREA_STRIP_PREFIX):]
+        street = obj['Adress1'].strip()
         flat = obj.get('FlatNumber')
         if flat:
             street = f"{street} (lgh {flat})"
@@ -190,12 +194,31 @@ class WahlinArenaScraper(BaseScraper):
             source=cls.SOURCE_NAME,
             # A re-publication of the same apartment gets a new ShowDateStart,
             # and must be reported again, so the date is part of the identity.
-            key=f"wahlin:{object_id}:{show_start}",
+            key=f"{cls.KEY_PREFIX}:{object_id}:{show_start}",
             object_id=object_id,
             published_until=show_end or None,
             lottery=bool(obj.get('ShowRandomSort')) if obj.get('ShowRandomSort') is not None else None,
             move_in=move_in or None,
         )
+
+
+# --------------------------------------------------------------------------
+# Heimstaden - Vitec Arena tenant portal (same product as Wåhlin's)
+# --------------------------------------------------------------------------
+
+class HeimstadenArenaScraper(WahlinArenaScraper):
+    """All of Heimstaden Sweden in one ~2.5 MB JSON response, no server-side
+    filter, so poll sparingly and filter by area in config (include_areas).
+    The public website is a mirror imported from this only a few times a day.
+    Allocation is by registration date on Mina sidor, not first-come.
+    """
+    SOURCE_NAME = "heimstaden"
+    BASE_URL = "https://mitt.heimstaden.com"
+    KEY_PREFIX = "heimstaden"
+    AREA_STRIP_PREFIX = "Stockholm - "
+
+    def __init__(self, timeout: float = 30.0):
+        super().__init__(timeout)
 
 
 # --------------------------------------------------------------------------
@@ -324,6 +347,7 @@ class WallfastRentalScraper(BaseScraper):
 
 SCRAPERS = {
     WahlinArenaScraper.SOURCE_NAME: WahlinArenaScraper,
+    HeimstadenArenaScraper.SOURCE_NAME: HeimstadenArenaScraper,
     WahlinRentalScraper.SOURCE_NAME: WahlinRentalScraper,
     WallfastRentalScraper.SOURCE_NAME: WallfastRentalScraper,
 }

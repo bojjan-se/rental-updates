@@ -29,6 +29,15 @@ sources:
     enabled: true
     interval_seconds: 20
 
+  # Heimstaden's tenant portal (Vitec Arena). One ~2.5 MB JSON response for all
+  # of Sweden, no server-side filter. Allocation is by registration date on
+  # Mina sidor, so hourly polling is enough. include_areas: only listings in
+  # these areas are considered at all (others are neither stored nor notified).
+  heimstaden:
+    enabled: true
+    interval_seconds: 3600
+    include_areas: ["Vasastaden", "Södermalm", "Gärdet", "Kungsholmen"]
+
 # Areas to stay quiet about across all sources (per-source lists above add to this).
 filters:
   exclude_areas: []

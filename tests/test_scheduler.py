@@ -261,3 +261,14 @@ def test_global_exclude_and_word_matching():
                           config_extra={'filters': {'exclude_areas': ['Knivsta', 'Ursvik']}})
     p.tick(); p.tick(); p.tick()
     assert n.listings == [["y"]]
+
+
+def test_include_areas_drops_everything_else_before_detection():
+    p, n, _ = make_poller([ScrapeResult("fake", ok=True, listings=[
+                               area_listing("a", "Vasastaden").listings[0],
+                               area_listing("b", "Katrineholm - Centrum").listings[0],
+                               area_listing("c", "Södermalm").listings[0]])],
+                          config_extra={'sources': {'fake': {'include_areas': ['Vasastaden', 'Södermalm', 'Gärdet', 'Kungsholmen']}}})
+    p.tick()
+    assert n.listings == [["a", "c"]]
+    assert p.detector.seen == {"a", "c"}          # Katrineholm was never even recorded

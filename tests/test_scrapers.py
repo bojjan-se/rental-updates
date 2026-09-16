@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import pytest
 from bs4 import BeautifulSoup
 
-from src.scraper import (WahlinArenaScraper, WahlinRentalScraper, WallfastRentalScraper,
-                         ShapeChanged, FetchError)
+from src.scraper import (WahlinArenaScraper, HeimstadenArenaScraper, WahlinRentalScraper,
+                         WallfastRentalScraper, ShapeChanged, FetchError)
 
 
 ARENA_OBJECT = {
@@ -162,3 +162,21 @@ class TestWallfast:
         monkeypatch.setattr(s, "_get", lambda url: fake_response(text="<html><title>Oops</title></html>"))
         r = s.fetch()
         assert not r.ok and r.shape_changed
+
+
+class TestHeimstadenArena:
+    def test_parses_with_own_prefix_and_base_url(self):
+        obj = dict(ARENA_OBJECT, Id="6913112-1202", Adress1="Roslagsgatan 38 B ", AreaName="Stockholm - Vasastaden",
+                   DetailsUrl="/ledigt/detalj/id/6913112-1202", ShowDateEnd=None, ShowRandomSort=False)
+        l = HeimstadenArenaScraper.parse_objects([obj])[0]
+        assert l.key == "heimstaden:6913112-1202:2026-09-16"
+        assert l.url == "https://mitt.heimstaden.com/ledigt/detalj/id/6913112-1202"
+        assert l.area == "Vasastaden"                    # city prefix stripped for the notification title
+        assert l.street.startswith("Roslagsgatan 38 B")  # trailing space trimmed
+        assert l.published_until is None and l.lottery is False
+
+    def test_wahlin_keys_unchanged(self):
+        assert WahlinArenaScraper.parse_objects([ARENA_OBJECT])[0].key.startswith("wahlin:")
+
+    def test_url_points_at_heimstaden(self):
+        assert HeimstadenArenaScraper().url().startswith("https://mitt.heimstaden.com/rentalobject/Listapartment/published")
