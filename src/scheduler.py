@@ -245,6 +245,15 @@ class SourcePoller(threading.Thread):
     def seconds_since_success(self) -> float:
         return self.clock() - self.last_success_at
 
+    @property
+    def stale_threshold(self) -> float:
+        """How long without a success counts as stale for THIS source.
+
+        A source polled every 5 minutes is not stale after 3; it is simply
+        between polls. Allow three missed intervals plus any current backoff.
+        """
+        return max(float(self.health['stale_after_seconds']), 3 * self.interval + self.backoff)
+
     def _on_success(self):
         if self.consecutive_failures:
             logger.info(f"[{self.source}] recovered after {self.consecutive_failures} failures")
@@ -274,7 +283,7 @@ class SourcePoller(threading.Thread):
 
         blocked = status in self.health['block_status_codes']
         threshold = int(self.health['alert_after_consecutive_failures'])
-        stale = self.seconds_since_success >= float(self.health['stale_after_seconds'])
+        stale = self.seconds_since_success >= self.stale_threshold
 
         if result.shape_changed:
             title = f"{self.source}: page/API structure changed"
@@ -324,7 +333,6 @@ class Supervisor:
         """Restart dead pollers, alert on stale ones. Returns overall health."""
         healthy = True
         in_window = is_within_window(self.config, datetime.now(self.tz))
-        stale_after = float(self.health['stale_after_seconds'])
 
         for name, p in list(self.pollers.items()):
             if not p.is_alive():
@@ -338,7 +346,7 @@ class Supervisor:
                 fresh.start()
                 continue
 
-            if in_window and p.seconds_since_success >= stale_after:
+            if in_window and p.seconds_since_success >= p.stale_threshold:
                 healthy = False
                 if not p.down:
                     p.down = True

@@ -157,8 +157,9 @@ class DeadPoller:
 
 
 class LivePoller:
-    def __init__(self, seconds_since_success=0.0):
+    def __init__(self, seconds_since_success=0.0, stale_threshold=180.0):
         self.seconds_since_success = seconds_since_success
+        self.stale_threshold = stale_threshold
         self.last_error = None
         self.down = False
         self.scraper = FakeScraper([])
@@ -219,3 +220,24 @@ def test_supervisor_heartbeat_only_with_url(monkeypatch):
     s2.pollers = {"wallfast": LivePoller()}
     s2.check()
     assert len(calls) == 2                   # no heartbeat URL configured: nothing sent
+
+
+def test_stale_threshold_scales_with_interval():
+    p, _, _ = make_poller([], health_overrides={'stale_after_seconds': 180})
+    assert p.interval == 20 and p.stale_threshold == 180          # fast source: the floor applies
+    p.interval = 300
+    assert p.stale_threshold == 900                               # slow source: three missed polls
+    p.backoff = 100
+    assert p.stale_threshold == 1000                              # backoff is not "down"
+
+
+def test_slow_source_between_polls_is_not_flagged():
+    cfg = normalize_config({'health': {'stale_after_seconds': 180}})
+    n = FakeNotifier()
+    s = Supervisor(lambda name: LivePoller(), cfg, n, pytz.timezone("Europe/Stockholm"), clock=FakeClock())
+    s.pollers = {"wahlin": LivePoller(seconds_since_success=400, stale_threshold=900)}
+    assert s.check() is True
+    assert n.alerts == []
+    s.pollers["wahlin"].seconds_since_success = 950
+    assert s.check() is False
+    assert [k for k, _ in n.alerts] == ["wahlin:down"]
