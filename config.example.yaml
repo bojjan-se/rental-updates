@@ -80,4 +80,9 @@ health:
   heartbeat_url: ""
 
 database: "data/rentals.db"
-cleanup_days: 14              # forget listings not seen for this many days
+cleanup_days: 0               # 0 = keep every listing ever seen; N = forget listings not seen for N days
+dedupe_days: 14               # window for merging the same apartment seen via two sources
+backup:                       # nightly consistent copy of the database, taken at summary_time
+  enabled: true
+  dir: "data/backups"
+  keep: 14

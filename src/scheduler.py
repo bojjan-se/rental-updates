@@ -75,7 +75,16 @@ def normalize_config(raw: dict) -> dict:
     cfg['timezone'] = cfg.get('timezone') or schedule.get('timezone') or 'Europe/Stockholm'
     cfg['summary_time'] = cfg.get('summary_time') or schedule.get('end') or '23:59'
     cfg['database'] = cfg.get('database') or 'data/rentals.db'
-    cfg['cleanup_days'] = int(cfg.get('cleanup_days', 14))
+    # Retention: 0 (default) keeps every listing ever seen; the data is tiny and
+    # the first/last-seen history is what tells us how each landlord publishes.
+    cfg['cleanup_days'] = int(cfg.get('cleanup_days') or 0)
+    cfg['dedupe_days'] = int(cfg.get('dedupe_days') or 14)   # cross-source duplicate window
+    backup = cfg.get('backup') or {}
+    cfg['backup'] = {
+        'enabled': bool(backup.get('enabled', True)),
+        'dir': backup.get('dir') or 'data/backups',
+        'keep': int(backup.get('keep', 14)),
+    }
     default_interval = int(cfg.get('poll_interval_seconds', 20))
 
     # Sources
@@ -446,9 +455,15 @@ def maybe_send_summary(config, stats: Stats, detector: ChangeDetector, notifier:
     notifier.daily_summary(snap)
     stats.summary_sent = True
 
-    cleaned = detector.cleanup_old_listings(config['cleanup_days'])
-    if cleaned:
-        logger.info(f"Cleaned {cleaned} listings not seen for {config['cleanup_days']} days")
+    if config['backup']['enabled']:
+        path = detector.db.backup_to(config['backup']['dir'], config['backup']['keep'])
+        if path:
+            logger.info(f"Database backed up to {path}")
+
+    if config['cleanup_days'] > 0:
+        cleaned = detector.cleanup_old_listings(config['cleanup_days'])
+        if cleaned:
+            logger.info(f"Cleaned {cleaned} listings not seen for {config['cleanup_days']} days")
 
 
 def main(config_path: str = 'config.yaml'):
@@ -459,7 +474,7 @@ def main(config_path: str = 'config.yaml'):
     tz = pytz.timezone(config['timezone'])
     logger.info("Config loaded")
 
-    detector = ChangeDetector(config['database'], cross_source_days=config['cleanup_days'])
+    detector = ChangeDetector(config['database'], cross_source_days=config['dedupe_days'])
     notifier = Notifier(config['notifications'], config['health']['alert_cooldown_seconds'])
     stats = Stats(tz)
 

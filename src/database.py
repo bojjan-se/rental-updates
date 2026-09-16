@@ -183,6 +183,22 @@ class RentalDatabase:
             logger.error(f"Database error: {e}")
             return []
 
+    def backup_to(self, backup_dir: str, keep: int = 14) -> Optional[str]:
+        """Consistent copy of the database into backup_dir, keeping the newest `keep` files."""
+        try:
+            target_dir = Path(backup_dir)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = target_dir / f"rentals-{datetime.now().strftime('%Y%m%d')}.db"
+            with self._lock, self._connect() as src, sqlite3.connect(target) as dst:
+                src.backup(dst)
+            backups = sorted(target_dir.glob("rentals-*.db"))
+            for old in (backups[:-keep] if keep > 0 else []):
+                old.unlink()
+            return str(target)
+        except Exception as e:
+            logger.error(f"Backup error: {e}")
+            return None
+
     def cleanup_old(self, days: int = 14) -> int:
         """Remove listings that have not been seen for N days.
 

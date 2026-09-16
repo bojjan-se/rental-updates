@@ -63,5 +63,8 @@ fi
 
 $COMPOSE up -d --remove-orphans "$SERVICE"
 rm -f "$FAILED_MARKER"
+# Every build leaves a superseded image and build cache behind; keep the disk flat.
+docker image prune -f >/dev/null 2>&1 || true
+docker builder prune -f --keep-storage 500m >/dev/null 2>&1 || true
 echo "$(date -Is) deployed ${REMOTE:0:7}: $SUBJECT"
 ntfy "Deployed ${REMOTE:0:7}" "rocket" "$SUBJECT"

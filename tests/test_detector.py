@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from src.detector import ChangeDetector
 from src.database import RentalDatabase
@@ -132,3 +133,23 @@ def test_migration_backfills_object_id_and_suppresses_duplicates(tmp_path):
     # The same apartment arriving via the portal is now recognised as already reported.
     arena = listing("wahlin:502-204:2026-09-16", source="wahlin_arena", object_id="502-204")
     assert d.detect_new_listings([arena]) == []
+
+
+def test_backup_creates_consistent_copy_and_rotates(tmp_path):
+    db = RentalDatabase(str(tmp_path / "t.db"))
+    db.upsert(listing("a"))
+    bdir = tmp_path / "backups"
+    bdir.mkdir()
+    for i in range(3):
+        (bdir / f"rentals-2020010{i}.db").write_bytes(b"old")
+    path = db.backup_to(str(bdir), keep=2)
+    assert path and sqlite3.connect(path).execute("select count(*) from listings").fetchone()[0] == 1
+    names = sorted(p.name for p in bdir.glob("rentals-*.db"))
+    assert len(names) == 2 and names[-1] == Path(path).name
+
+
+def test_retention_defaults_to_keep_forever():
+    cfg = normalize_config({})
+    assert cfg['cleanup_days'] == 0 and cfg['dedupe_days'] == 14
+    assert cfg['backup'] == {'enabled': True, 'dir': 'data/backups', 'keep': 14}
+    assert normalize_config({'cleanup_days': 30})['cleanup_days'] == 30

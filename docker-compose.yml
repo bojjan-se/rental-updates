@@ -8,3 +8,8 @@ services:
       - ./logs:/app/logs
       - ./config.yaml:/app/config.yaml:ro
     command: ["python3", "run.py"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

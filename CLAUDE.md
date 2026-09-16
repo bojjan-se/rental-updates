@@ -43,6 +43,7 @@ tests/              # pytest; no network access needed
 
 - `deploy/auto-update.sh` runs from cron on the server every minute (installed by `deploy/install-autoupdate.sh`): fetches origin/main, builds, runs pytest inside the image, then `docker compose up -d`. A failing commit is skipped and reported via ntfy, so a push to main is a production deploy: keep tests green.
 - `Supervisor` in scheduler.py restarts dead poller threads, alerts on stale sources, and pings `health.heartbeat_url` (healthchecks.io style, `/fail` when unhealthy).
+- Data retention: `cleanup_days: 0` (default) keeps every listing; `dedupe_days` (14) is the cross-source merge window; nightly DB backups go to `data/backups/` (`backup.keep` files). Docker stdout log is capped in docker-compose.yml; the deploy script prunes images/build cache.
 - Alerts use one key per source (`<source>:down`) so the notifier's cooldown turns a continuing outage into hourly reminders; recovery clears the key.
 
 ## Conventions

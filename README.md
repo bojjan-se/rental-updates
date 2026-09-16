@@ -69,6 +69,18 @@ Every one of these produces a phone alert:
 | A poller thread dies | The supervisor restarts it and alerts. |
 | The whole process or server dies | Only an outside observer can catch this: set `health.heartbeat_url` to a free [healthchecks.io](https://healthchecks.io) check (period 1 min, grace 5 min) with its ntfy integration pointed at your topic. The monitor pings it every minute while healthy and pings `/fail` while a source is down. |
 
+## Data lifecycle
+
+- **Listings database** (`data/rentals.db`): one row per listing with first-seen and
+  last-seen timestamps. Kept forever by default (`cleanup_days: 0`); a year of
+  history is well under a megabyte, and it is what reveals when each landlord
+  publishes. A consistent copy is written nightly to `data/backups/` (14 kept).
+- **Logs**: `logs/scheduler.log` rotates at 10 MB x 5; Docker's stdout log is capped
+  in `docker-compose.yml`; `logs/autoupdate.log` gets a few lines per deploy.
+- **Docker images and build cache**: pruned after every successful auto-deploy.
+- **Notifications**: ntfy.sh keeps messages 12 hours; the phone app keeps them until cleared.
+- **Secrets**: only `config.yaml` (gitignored) holds the ntfy topic.
+
 ## Docker
 
 ```bash
