@@ -56,6 +56,23 @@ class RentalDatabase:
             conn.execute('CREATE INDEX IF NOT EXISTS idx_first_seen ON listings(first_seen)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_last_seen ON listings(last_seen)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_object_id ON listings(object_id)')
+            self._backfill_object_ids(conn)
+
+    def _backfill_object_ids(self, conn: sqlite3.Connection):
+        """Rows migrated from v1 have no object_id. Derive it from the URL where
+        possible so cross-source de-duplication also covers old rows."""
+        from .scraper import WahlinRentalScraper  # local import: avoid a circular import at module load
+        rows = conn.execute(
+            "SELECT key, url FROM listings WHERE object_id IS NULL AND url LIKE '%wahlinfastigheter.se/lediga-objekt/%'"
+        ).fetchall()
+        updated = 0
+        for r in rows:
+            m = WahlinRentalScraper.OBJECT_ID_RE.search(r['url'] or '')
+            if m:
+                conn.execute('UPDATE listings SET object_id = ? WHERE key = ?', (m.group(1), r['key']))
+                updated += 1
+        if updated:
+            logger.info(f"Backfilled object_id on {updated} listings")
 
     def _migrate_v1(self, conn: sqlite3.Connection):
         logger.info("Migrating listings table from v1 (url key) to v2 (stable key)")

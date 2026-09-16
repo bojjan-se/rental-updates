@@ -113,3 +113,21 @@ def test_v2_config_is_normalized():
     assert cfg['health']['alert_after_consecutive_failures'] == 5
     assert cfg['health']['block_status_codes'] == [401, 403, 429]
     assert cfg['health']['heartbeat_url'] == ''
+
+
+def test_migration_backfills_object_id_and_suppresses_duplicates(tmp_path):
+    path = tmp_path / "v1.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute('''CREATE TABLE listings (url TEXT PRIMARY KEY, source TEXT, area TEXT NOT NULL,
+                        street TEXT NOT NULL, number_of_rooms TEXT NOT NULL, rent_cost TEXT NOT NULL,
+                        size TEXT NOT NULL, first_seen TIMESTAMP NOT NULL, last_seen TIMESTAMP NOT NULL)''')
+        now = datetime.now().isoformat(sep=' ')
+        conn.execute("INSERT INTO listings VALUES (?,?,?,?,?,?,?,?,?)",
+                     ("https://wahlinfastigheter.se/lediga-objekt/sodergatan-1-f-502-204/", "wahlin",
+                      "Märsta", "Södergatan 1 F", "2 rok", "10 797 kr", "63 kvm", now, now))
+    d = ChangeDetector(str(path))
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("SELECT object_id FROM listings").fetchone()[0] == "502-204"
+    # The same apartment arriving via the portal is now recognised as already reported.
+    arena = listing("wahlin:502-204:2026-09-16", source="wahlin_arena", object_id="502-204")
+    assert d.detect_new_listings([arena]) == []
