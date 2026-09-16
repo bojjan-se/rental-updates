@@ -15,6 +15,7 @@ sources:
   wahlin_arena:
     enabled: true
     interval_seconds: 20
+    exclude_areas: []          # e.g. ["Märsta", "Knivsta"]: recorded, but no notification
 
   # Wåhlin's public website. Daily mirror of the above; kept as a fallback.
   # Listings already reported via wahlin_arena are not reported again.
@@ -27,6 +28,10 @@ sources:
   wallfast:
     enabled: true
     interval_seconds: 20
+
+# Areas to stay quiet about across all sources (per-source lists above add to this).
+filters:
+  exclude_areas: []
 
 notifications:
   # Gmail SMTP - use an App Password: https://support.google.com/accounts/answer/185833

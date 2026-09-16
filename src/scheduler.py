@@ -10,6 +10,7 @@ external heartbeat (dead man's switch), and sends the daily summary.
 """
 
 import logging
+import re
 import signal
 import sys
 import threading
@@ -86,6 +87,7 @@ def normalize_config(raw: dict) -> dict:
                 'enabled': bool((s or {}).get('enabled', True)),
                 'interval_seconds': int((s or {}).get('interval_seconds',
                                                       DEFAULT_INTERVALS.get(name, default_interval))),
+                'exclude_areas': [str(a) for a in ((s or {}).get('exclude_areas') or [])],
             }
     elif isinstance(cfg.get('scrapers'), dict):
         # v1 layout: scrapers: {wahlin: true, wallfast: true}
@@ -98,6 +100,10 @@ def normalize_config(raw: dict) -> dict:
     else:
         sources = {name: {'enabled': True, 'interval_seconds': iv} for name, iv in DEFAULT_INTERVALS.items()}
     cfg['sources'] = sources
+
+    # Filters: listings in excluded areas are recorded but never notified.
+    filters = cfg.get('filters') or {}
+    cfg['filters'] = {'exclude_areas': [str(a) for a in (filters.get('exclude_areas') or [])]}
 
     # Notifications (v1 had a top-level email block)
     notifications = dict(cfg.get('notifications') or {})
@@ -196,6 +202,8 @@ class SourcePoller(threading.Thread):
         self.tz = tz
         self.clock = clock
         self.health = config['health']
+        self.exclude_areas = (config.get('filters', {}).get('exclude_areas', [])
+                              + config['sources'].get(name, {}).get('exclude_areas', []))
         self.consecutive_failures = 0
         self.backoff = 0.0
         self.down = False                    # an alert has been raised and not yet cleared
@@ -205,7 +213,8 @@ class SourcePoller(threading.Thread):
     # -- thread body -----------------------------------------------------------
 
     def run(self):
-        logger.info(f"[{self.source}] polling every {self.interval}s")
+        logger.info(f"[{self.source}] polling every {self.interval}s"
+                    + (f", not notifying for areas: {', '.join(self.exclude_areas)}" if self.exclude_areas else ""))
         while not stop_event.is_set():
             started = self.clock()
             if is_within_window(self.config, datetime.now(self.tz)):
@@ -222,15 +231,26 @@ class SourcePoller(threading.Thread):
             logger.exception(f"[{self.source}] unexpected error in poll")
             self._on_failure(ScrapeResult(self.source, ok=False, error=f"internal error: {e}"))
 
+    def is_excluded(self, listing) -> bool:
+        area = (listing.area or '')
+        return any(re.search(rf'(?<!\w){re.escape(x)}(?!\w)', area, re.IGNORECASE) for x in self.exclude_areas)
+
     def poll_once(self):
         result = self.scraper.fetch()
         new = []
         if result.ok:
             new = self.detector.detect_new_listings(result.listings)
             if new:
+                wanted = []
                 for l in new:
+                    if self.is_excluded(l):
+                        logger.info(f"[{self.source}] skipped (area {l.area}): {l.street} {l.url}")
+                        continue
                     logger.info(f"[{self.source}] NEW: {l.street}, {l.area} {l.rent_cost} {l.url}")
-                self.notifier.notify_listings(new)
+                    wanted.append(l)
+                if wanted:
+                    self.notifier.notify_listings(wanted)
+                new = wanted
             else:
                 logger.debug(f"[{self.source}] {len(result.listings)} listings, nothing new "
                              f"({result.elapsed:.2f}s)")

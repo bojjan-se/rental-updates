@@ -108,8 +108,9 @@ def test_v1_config_is_normalized():
 
 def test_v2_config_is_normalized():
     cfg = normalize_config({'sources': {'wallfast': {'interval_seconds': 15}, 'wahlin': False}})
-    assert cfg['sources'] == {'wallfast': {'enabled': True, 'interval_seconds': 15},
-                              'wahlin': {'enabled': False, 'interval_seconds': 300}}
+    assert cfg['sources'] == {'wallfast': {'enabled': True, 'interval_seconds': 15, 'exclude_areas': []},
+                              'wahlin': {'enabled': False, 'interval_seconds': 300, 'exclude_areas': []}}
+    assert cfg['filters'] == {'exclude_areas': []}
     assert cfg['health']['alert_after_consecutive_failures'] == 5
     assert cfg['health']['block_status_codes'] == [401, 403, 429]
     assert cfg['health']['heartbeat_url'] == ''

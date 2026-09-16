@@ -70,8 +70,8 @@ def fail(error="boom", status=None, shape=False):
     return ScrapeResult("fake", ok=False, error=error, status_code=status, shape_changed=shape)
 
 
-def make_poller(results, clock=None, health_overrides=None):
-    cfg = normalize_config({'health': health_overrides or {}})
+def make_poller(results, clock=None, health_overrides=None, config_extra=None):
+    cfg = normalize_config({'health': health_overrides or {}, **(config_extra or {})})
     clock = clock or FakeClock()
     notifier = FakeNotifier()
     tz = pytz.timezone("Europe/Stockholm")
@@ -241,3 +241,23 @@ def test_slow_source_between_polls_is_not_flagged():
     s.pollers["wahlin"].seconds_since_success = 950
     assert s.check() is False
     assert [k for k, _ in n.alerts] == ["wahlin:down"]
+
+
+def area_listing(key, area):
+    return ScrapeResult("fake", ok=True, listings=[
+        RentalListing(area=area, street=key, number_of_rooms="1", rent_cost="1", size="1", url=f"u/{key}", key=key)])
+
+
+def test_excluded_areas_are_recorded_but_not_notified():
+    p, n, _ = make_poller([area_listing("a", "Märsta"), area_listing("b", "Solna"), area_listing("a", "Märsta")],
+                          config_extra={'sources': {'fake': {'exclude_areas': ['märsta', 'Knivsta']}}})
+    p.tick(); p.tick(); p.tick()
+    assert n.listings == [["b"]]            # Märsta never sent, and not re-sent when seen again
+    assert p.stats.snapshot()['new_listings'] == 1
+
+
+def test_global_exclude_and_word_matching():
+    p, n, _ = make_poller([area_listing("x", "Knivsta kommun"), area_listing("y", "Solna"), area_listing("z", "Ursvik")],
+                          config_extra={'filters': {'exclude_areas': ['Knivsta', 'Ursvik']}})
+    p.tick(); p.tick(); p.tick()
+    assert n.listings == [["y"]]
