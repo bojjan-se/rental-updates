@@ -9,6 +9,7 @@ import logging
 import queue
 import threading
 import time
+from datetime import datetime
 from typing import List, Optional
 
 import requests
@@ -19,25 +20,44 @@ from .email import EmailNotifier
 logger = logging.getLogger(__name__)
 
 
-def listings_text(listings: List[RentalListing]) -> str:
-    lines = []
-    for l in listings:
-        parts = [f"{l.street}, {l.area}", l.number_of_rooms, l.size, l.rent_cost]
-        parts = [p for p in parts if p and p != "N/A"]
-        extras = []
-        if l.published_until:
-            extras.append(f"apply by {l.published_until}")
-        if l.lottery:
-            extras.append("lottery")
-        if l.move_in:
-            extras.append(f"move in {l.move_in}")
-        line = " · ".join(parts)
-        if extras:
-            line += f" ({', '.join(extras)})"
-        lines.append(line)
-        if l.url:
-            lines.append(l.url)
+def _present(value: Optional[str]) -> Optional[str]:
+    return value if value and value != "N/A" else None
+
+
+def nice_deadline(value: Optional[str]) -> Optional[str]:
+    """'2026-09-19 23:59' -> 'Sat 19 Sep 23:59'; anything unparseable is returned as is."""
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(value, fmt)
+            return dt.strftime("%a %d %b %H:%M") if fmt.endswith("%M") else dt.strftime("%a %d %b")
+        except ValueError:
+            continue
+    return value
+
+
+def listing_headline(l: RentalListing) -> str:
+    """One glanceable line: area · rooms · size · rent."""
+    parts = [l.area, _present(l.number_of_rooms), _present(l.size), _present(l.rent_cost)]
+    return " · ".join(p for p in parts if p)
+
+
+def listing_details(l: RentalListing) -> str:
+    """Address, deadline, link - one per line."""
+    lines = [l.street]
+    deadline = nice_deadline(l.published_until)
+    if deadline:
+        lines.append(f"Apply by {deadline}" + (" (lottery)" if l.lottery else ""))
+    elif l.lottery:
+        lines.append("Lottery")
+    if l.url:
+        lines.append(l.url)
     return "\n".join(lines)
+
+
+def listings_text(listings: List[RentalListing]) -> str:
+    return "\n\n".join(f"{listing_headline(l)}\n{listing_details(l)}" for l in listings)
 
 
 class NtfyChannel:
@@ -59,12 +79,14 @@ class NtfyChannel:
         if not self.enabled:
             return False
         headers = {
-            'Title': title.encode('utf-8').decode('latin-1', 'replace'),
+            # ntfy headers are Latin-1; Swedish letters fit, anything else is replaced.
+            'Title': title.encode('latin-1', 'replace').decode('latin-1'),
             'Priority': priority or self.priority,
             'Tags': tags,
         }
         if click:
             headers['Click'] = click
+            headers['Actions'] = f'view, Open listing, {click}'
         if self.token:
             headers['Authorization'] = f'Bearer {self.token}'
         try:
@@ -77,10 +99,12 @@ class NtfyChannel:
             return False
 
     def send_listings(self, listings: List[RentalListing]) -> bool:
-        first = listings[0]
-        title = (f"New listing: {first.street}" if len(listings) == 1
-                 else f"{len(listings)} new listings")
-        return self._post(title, listings_text(listings), click=first.url, priority='urgent')
+        """One notification per listing, so each can be judged from its title line."""
+        ok = True
+        for l in listings:
+            ok = self._post(listing_headline(l), listing_details(l), click=l.url,
+                            priority='urgent', tags='house') and ok
+        return ok
 
     def send_text(self, title: str, body: str) -> bool:
         # Operational alerts (site down, blocked, structure changed) must be noticed.

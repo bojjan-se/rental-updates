@@ -1,6 +1,7 @@
 import time
 
-from src.notify import Notifier, listings_text
+from src.notify import (Notifier, NtfyChannel, listings_text, listing_headline, listing_details,
+                        nice_deadline)
 from src.models import RentalListing
 
 
@@ -81,10 +82,43 @@ def test_channel_exception_does_not_kill_worker():
 
 def test_listings_text_includes_deadline_and_url():
     text = listings_text([make_listing("a")])
-    assert "apply by 2026-09-16 00:00" in text
-    assert "lottery" in text
+    assert text.splitlines()[0] == "Solna · 2 rok · 68 kvm · 11 545 kr"
+    assert "Apply by Wed 16 Sep 00:00 (lottery)" in text
     assert "https://x/a" in text
     assert "N/A" not in text
+
+
+def test_headline_skips_missing_fields():
+    l = RentalListing(area="Solna", street="Lediga garageplatser", number_of_rooms="N/A",
+                      rent_cost="N/A", size="N/A", url="https://x/g", key="g", lottery=True)
+    assert listing_headline(l) == "Solna"
+    assert listing_details(l) == "Lediga garageplatser\nLottery\nhttps://x/g"
+
+
+def test_nice_deadline_formats():
+    assert nice_deadline("2026-09-19 23:59") == "Sat 19 Sep 23:59"
+    assert nice_deadline("2026-09-19") == "Sat 19 Sep"
+    assert nice_deadline("soon") == "soon"
+    assert nice_deadline(None) is None
+
+
+def test_ntfy_sends_one_notification_per_listing(monkeypatch):
+    posts = []
+
+    class R:
+        def raise_for_status(self):
+            pass
+    monkeypatch.setattr("src.notify.requests.post",
+                        lambda url, data, headers, timeout: posts.append((url, data, headers)) or R())
+    ch = NtfyChannel({'enabled': True, 'topic': 't', 'server': 'https://ntfy.example'})
+    assert ch.send_listings([make_listing("a"), make_listing("b")]) is True
+    assert len(posts) == 2
+    url, data, headers = posts[0]
+    assert url == "https://ntfy.example/t"
+    assert headers['Title'] == "Solna · 2 rok · 68 kvm · 11 545 kr"
+    assert headers['Click'] == "https://x/a" and headers['Actions'].endswith("https://x/a")
+    assert headers['Priority'] == "urgent"
+    assert data.decode('utf-8').splitlines() == ["Street a", "Apply by Wed 16 Sep 00:00 (lottery)", "https://x/a"]
 
 
 def test_disabled_channels_with_missing_config_do_not_crash():
