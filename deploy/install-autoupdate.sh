@@ -16,7 +16,8 @@ done
 docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null || { echo "missing: docker compose"; exit 1; }
 
 # Cron entry (replaces any previous one for this script).
-LINE="* * * * * $SCRIPT >> $LOG 2>&1"
+# Run through bash explicitly so a lost executable bit can never break deploys.
+LINE="* * * * * /bin/bash $SCRIPT >> $LOG 2>&1"
 ( crontab -l 2>/dev/null | grep -vF "deploy/auto-update.sh" || true; echo "$LINE" ) | crontab -
 
 echo "Installed: $LINE"
